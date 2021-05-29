@@ -26,6 +26,7 @@ IOS_ARCH_MAP = {
     'arm64': 'ios-arm64',
     'x64'  : 'ios-x86_64-simulator'
 }
+IOS_BUILD_ARCHS = ['arm64', 'x64']
 IOS_BUILD_ARCHS = [
     'arm64',
     'x64'

@@ -11,6 +11,8 @@ import com.facebook.react.bridge.Promise;
 import com.facebook.react.bridge.ReactApplicationContext;
 import com.facebook.react.bridge.ReactContextBaseJavaModule;
 import com.facebook.react.bridge.ReactMethod;
+import com.facebook.react.bridge.WritableArray;
+import com.facebook.react.bridge.WritableMap;
 import com.facebook.react.bridge.ReadableArray;
 import com.facebook.react.bridge.ReadableMap;
 import com.facebook.react.bridge.ReadableMapKeySetIterator;
@@ -23,6 +25,19 @@ import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.UUID;
+
+import android.util.Base64;
+import android.util.SparseArray;
+import android.hardware.Camera;
+import android.content.Context;
+import android.app.Activity;
+
+import android.opengl.EGLContext;
+import android.util.Log;
+import android.hardware.Camera.CameraInfo;
+import android.hardware.Camera.Parameters;
+import android.hardware.Camera.Size;
 
 import org.webrtc.*;
 import org.webrtc.audio.AudioDeviceModule;
@@ -208,6 +223,26 @@ public class WebRTCModule extends ReactContextBaseJavaModule {
             iceServersArray = map.getArray("iceServers");
         }
         List<PeerConnection.IceServer> iceServers = createIceServers(iceServersArray);
+        PeerConnection.RTCConfiguration configuration = new PeerConnection.RTCConfiguration(iceServers);
+        // TODO: Implement the rest of the RTCConfigure options ...
+        return configuration;
+    }
+
+    @ReactMethod
+    public void peerConnectionInit(ReadableMap configuration, int id){
+        PeerConnection.RTCConfiguration config = parseRTCConfiguration(configuration);
+        PeerConnectionObserver observer = new PeerConnectionObserver(this, id);
+        PeerConnection peerConnection = mFactory.createPeerConnection(config, pcConstraints, observer);
+        observer.setPeerConnection(peerConnection);
+        mPeerConnectionObservers.put(id, observer);
+    }
+
+    private String getNextStreamUUID() {
+        String uuid;
+
+        do {
+            uuid = UUID.randomUUID().toString();
+        } while (mMediaStreams.containsKey(uuid));
         PeerConnection.RTCConfiguration conf = new PeerConnection.RTCConfiguration(iceServers);
         if (map == null) {
             return conf;
@@ -915,6 +950,21 @@ public class WebRTCModule extends ReactContextBaseJavaModule {
     }
 
     @ReactMethod
+    public void mediaStreamRelease(final String id) {
+        MediaStream mediaStream = mMediaStreams.get(id);
+        if (mediaStream != null) {
+            for (VideoTrack track : mediaStream.videoTracks) {
+                mMediaStreamTracks.remove(track);
+                removeVideoCapturer(track.id());
+            }
+            for (AudioTrack track : mediaStream.audioTracks) {
+                mMediaStreamTracks.remove(track);
+            }
+
+            mMediaStreams.remove(id);
+        } else {
+            Log.d(TAG, "mediaStreamRelease() mediaStream is null");
+        }
     public void createDataChannel(int peerConnectionId,
                                   String label,
                                   ReadableMap config) {

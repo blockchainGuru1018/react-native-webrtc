@@ -4,134 +4,145 @@
 [![npm downloads](https://img.shields.io/npm/dm/react-native-webrtc.svg?maxAge=2592000)](https://img.shields.io/npm/dm/react-native-webrtc.svg?maxAge=2592000)
 
 A WebRTC module for React Native.
+- Support iOS / macOS / Android.
+- Support Video / Audio / Data Channels.
 
-# BREAKING FOR RN 40:
+**NOTE** for Expo users: this plugin doesn't work unless you eject.
 
-master branch needs RN >= 40 for now.
-if you RN version under < 40, use version `0.54.4`
+## Community
 
-see [#190](https://github.com/oney/react-native-webrtc/pull/190) for detials
-
-## Support
-- Currently support for iOS and Android.  
-- Support video and audio communication.  
-- Supports data channels.  
-- You can use it to build an iOS/Android app that can communicate with web browser.  
-- The WebRTC Library is based on [webrtc-build-scripts](https://github.com/pristineio/webrtc-build-scripts)
+Everyone is welcome to our [Discourse community](https://react-native-webrtc.discourse.group/) to discuss any React Native and WebRTC related topics.
 
 ## WebRTC Revision
 
-Since `0.53`, we use same branch version number like in webrtc native.
-please see [wiki page](https://github.com/oney/react-native-webrtc/wiki) about revision history 
-
-### format:
-
-`${branch_name} stable (${branched_from_revision})(+${Cherry-Picks-Num}-${Last-Cherry-Picks-Revision})`
-
-* the webrtc revision in brackets is extracting frrom `Cr-Branched-From` instead `Cr-Commit-Position`  
-* the number follows with `+` is the additional amount of cherry-picks since `Branched-From` revision.
-
-### note:
-the order of commit revision is nothing to do with the order of cherry-picks, for example, the earlier committed `cherry-pick-#2` may have higher revision than `cherry-pick-#3` and vice versa.
-
-| react-native-webrtc | WebRTC(ios) | WebRTC(android)  | npm published | note |
-| :-------------: | :-------------:| :-----: | :-----: | :-----: | :-----: |
-| 0.53.2 | 53 stable<br>(13317)<br>(+6-13855)<br>32/64 | 53 stable<br>(13317)<br>(+6-13855)<br>32 | :heavy_check_mark: | |
-| 0.54.4 | 54 stable<br>(13869)<br>(+6-14091)<br>32/64 | 54 stable<br>(13869)<br>(+6-14091)<br>32 | :heavy_check_mark: | RN < 40 |
-| 1.54.5 | 54 stable<br>(13869)<br>(+6-14091)<br>32/64 | 54 stable<br>(13869)<br>(+6-14091)<br>32 | :heavy_check_mark: | RN >= 40 |
-| master | 54 stable<br>(13869)<br>(+6-14091)<br>32/64 | 54 stable<br>(13869)<br>(+6-14091)<br>32 | :warning:          | |
+* Currently used revision: [M87](https://github.com/jitsi/webrtc/commit/9a88667ef7b46c175851506453c6cc6b642292cc)
+* Supported architectures
+  * Android: armeabi-v7a, arm64-v8a, x86, x86_64
+  * iOS: arm64, x86_64 (for bitcode support, run [this script](https://github.com/react-native-webrtc/react-native-webrtc/blob/master/tools/downloadBitcode.sh))
+  * macOS: x86_64
 
 ## Installation
 
-### react-native-webrtc:
-
-- [iOS](https://github.com/oney/react-native-webrtc/blob/master/Documentation/iOSInstallation.md)
-- [Android](https://github.com/oney/react-native-webrtc/blob/master/Documentation/AndroidInstallation.md)
-
-note: 0.10.0~0.12.0 required `git-lfs`, see: [git-lfs-installation](https://github.com/oney/react-native-webrtc/blob/master/Documentation/git-lfs-installation.md) 
+- [iOS](https://github.com/react-native-webrtc/react-native-webrtc/blob/master/Documentation/iOSInstallation.md)
+- [Android](https://github.com/react-native-webrtc/react-native-webrtc/blob/master/Documentation/AndroidInstallation.md)
 
 ## Usage
 Now, you can use WebRTC like in browser.
 In your `index.ios.js`/`index.android.js`, you can require WebRTC to import RTCPeerConnection, RTCSessionDescription, etc.
+
 ```javascript
-var WebRTC = require('react-native-webrtc');
-var {
+import {
   RTCPeerConnection,
-  RTCMediaStream,
   RTCIceCandidate,
   RTCSessionDescription,
   RTCView,
+  MediaStream,
   MediaStreamTrack,
-  getUserMedia,
-} = WebRTC;
+  mediaDevices,
+  registerGlobals
+} from 'react-native-webrtc';
 ```
-Anything about using RTCPeerConnection, RTCSessionDescription and RTCIceCandidate is like browser.  
-Support most WebRTC APIs, please see the [Document](https://developer.mozilla.org/zh-TW/docs/Web/API/RTCPeerConnection).
+Anything about using RTCPeerConnection, RTCSessionDescription and RTCIceCandidate is like browser.
+Support most WebRTC APIs, please see the [Document](https://developer.mozilla.org/en-US/docs/Web/API/RTCPeerConnection).
+
 ```javascript
-var configuration = {"iceServers": [{"url": "stun:stun.l.google.com:19302"}]};
-var pc = new RTCPeerConnection(configuration);
-MediaStreamTrack.getSources(sourceInfos => {
-  var videoSourceId;
-  for (var i = 0; i < sourceInfos.length; i++) {
-    var sourceInfo = sourceInfos[i];
-    if(sourceInfo.kind == "video" && sourceInfo.facing == "front") {
-      videoSourceId = sourceInfo.id;
+const configuration = {"iceServers": [{"url": "stun:stun.l.google.com:19302"}]};
+const pc = new RTCPeerConnection(configuration);
+
+let isFront = true;
+mediaDevices.enumerateDevices().then(sourceInfos => {
+  console.log(sourceInfos);
+  let videoSourceId;
+  for (let i = 0; i < sourceInfos.length; i++) {
+    const sourceInfo = sourceInfos[i];
+    if(sourceInfo.kind == "videoinput" && sourceInfo.facing == (isFront ? "front" : "environment")) {
+      videoSourceId = sourceInfo.deviceId;
     }
   }
-  getUserMedia({
-    "audio": true,
-    "video": {
-      optional: [{sourceId: videoSourceId}]
+  mediaDevices.getUserMedia({
+    audio: true,
+    video: {
+      width: 640,
+      height: 480,
+      frameRate: 30,
+      facingMode: (isFront ? "user" : "environment"),
+      deviceId: videoSourceId
     }
-  }, function (stream) {
-    pc.addStream(stream);
-  }, logError);
+  })
+  .then(stream => {
+    // Got stream!
+  })
+  .catch(error => {
+    // Log error
+  });
 });
 
-pc.createOffer(function(desc) {
-  pc.setLocalDescription(desc, function () {
+pc.createOffer().then(desc => {
+  pc.setLocalDescription(desc).then(() => {
     // Send pc.localDescription to peer
-  }, function(e) {});
-}, function(e) {});
+  });
+});
+
 pc.onicecandidate = function (event) {
   // send event.candidate to peer
 };
+
 // also support setRemoteDescription, createAnswer, addIceCandidate, onnegotiationneeded, oniceconnectionstatechange, onsignalingstatechange, onaddstream
 
 ```
+
+### RTCView
+
 However, render video stream should be used by React way.
 
 Rendering RTCView.
+
 ```javascript
-var container;
-var RCTWebRTCDemo = React.createClass({
-  getInitialState: function() {
-    return {videoURL: null};
-  },
-  componentDidMount: function() {
-    container = this;
-  },
-  render: function() {
-    return (
-      <View>
-        <RTCView streamURL={this.state.videoURL}/>
-      </View>
-    );
-  }
-});
+<RTCView streamURL={this.state.stream.toURL()}/>
 ```
-And set stream to RTCView
-```javascript
-container.setState({videoURL: stream.toURL()});
-```
-## Demo
-The demo project is https://github.com/oney/RCTWebRTCDemo   
-And you will need a signaling server. I have written a signaling server https://react-native-webrtc.herokuapp.com/ (the repository is https://github.com/oney/react-native-webrtc-server).   
-You can open this website in browser, and then set it as signaling server in the app, and run the app. After you enter the same room ID, the video stream will be connected.
 
-## Native control
-Use [react-native-incall-manager](https://github.com/zxcpoiu/react-native-incall-manager) to keep screen on, mute microphone, etc.
+| Name                           | Type             | Default                   | Description                                                                                                                                |
+| ------------------------------ | ---------------- | ------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------ |
+| mirror                         | boolean          | false               | Indicates whether the video specified by "streamURL" should be mirrored during rendering. Commonly, applications choose to mirror theuser-facing camera.                                                                                                                       |
+| objectFit                      | string           | 'contain'           | Can be contain or cover                                                                                                | 
+| streamURL                      | string           | ''                  | This is mandatory                                                                                                                      |
+| zOrder                         | number           | 0                   | Similarly to zIndex                                                                                              |
 
-## Sponsorship
-This repository doesn't have a plan to get sponsorship.(This can be discussed afterwards by collaborators). If you would like to pay bounty to fix some bugs or get some features, be free to open a issue that adds `[BOUNTY]` category in title. Add other bounty website link like [this](https://www.bountysource.com) will be better.
 
+### Custom APIs
+
+#### registerGlobals()
+
+By calling this method the JavaScript global namespace gets "polluted" with the following additions:
+
+* `navigator.mediaDevices.getUserMedia()`
+* `navigator.mediaDevices.enumerateDevices()`
+* `window.RTCPeerConnection`
+* `window.RTCIceCandidate`
+* `window.RTCSessionDescription`
+* `window.MediaStream`
+* `window.MediaStreamTrack`
+
+This is useful to make existing WebRTC JavaScript libraries (that expect those globals to exist) work with react-native-webrtc.
+
+
+#### MediaStreamTrack.prototype._switchCamera()
+
+This function allows to switch the front / back cameras in a video track
+on the fly, without the need for adding / removing tracks or renegotiating.
+
+#### VideoTrack.enabled
+
+Starting with version 1.67, when setting a local video track's enabled state to
+`false`, the camera will be closed, but the track will remain alive. Setting
+it back to `true` will re-enable the camera.
+
+## Related projects
+
+The [react-native-webrtc](https://github.com/react-native-webrtc) organization provides a number of packages which are useful when developing Real Time Communications applications.
+
+## Acknowledgements
+
+Thanks to all [contributors](https://github.com/react-native-webrtc/react-native-webrtc/graphs/contributors) for helping with the project!
+
+Special thanks to [Wan Huang Yang](https://github.com/oney/) for creating the first version of this package.

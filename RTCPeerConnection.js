@@ -1,17 +1,20 @@
 'use strict';
 
 import EventTarget from 'event-target-shim';
-import {DeviceEventEmitter, NativeModules} from 'react-native';
+import { NativeModules, NativeEventEmitter } from 'react-native';
 
 import MediaStream from './MediaStream';
 import MediaStreamEvent from './MediaStreamEvent';
 import MediaStreamTrack from './MediaStreamTrack';
+import MediaStreamTrackEvent from './MediaStreamTrackEvent';
 import RTCDataChannel from './RTCDataChannel';
 import RTCDataChannelEvent from './RTCDataChannelEvent';
 import RTCSessionDescription from './RTCSessionDescription';
 import RTCIceCandidate from './RTCIceCandidate';
 import RTCIceCandidateEvent from './RTCIceCandidateEvent';
 import RTCEvent from './RTCEvent';
+import * as RTCUtil from './RTCUtil';
+import EventEmitter from './EventEmitter';
 
 const {WebRTCModule} = NativeModules;
 
@@ -27,6 +30,14 @@ type RTCIceGatheringState =
   'new' |
   'gathering' |
   'complete';
+
+type RTCPeerConnectionState =
+  'new' |
+  'connecting' |
+  'connected' |
+  'disconnected' |
+  'failed' |
+  'closed';
 
 type RTCIceConnectionState =
   'new' |
@@ -60,6 +71,7 @@ export default class RTCPeerConnection extends EventTarget(PEER_CONNECTION_EVENT
 
   signalingState: RTCSignalingState = 'stable';
   iceGatheringState: RTCIceGatheringState = 'new';
+  connectionState: RTCPeerConnectionState = 'new';
   iceConnectionState: RTCIceConnectionState = 'new';
 
   onconnectionstatechange: ?Function;
@@ -74,6 +86,7 @@ export default class RTCPeerConnection extends EventTarget(PEER_CONNECTION_EVENT
   onremovestream: ?Function;
 
   _peerConnectionId: number;
+  _localStreams: Array<MediaStream> = [];
   _remoteStreams: Array<MediaStream> = [];
   _subscriptions: Array<any>;
 
@@ -90,32 +103,50 @@ export default class RTCPeerConnection extends EventTarget(PEER_CONNECTION_EVENT
   }
 
   addStream(stream: MediaStream) {
-    WebRTCModule.peerConnectionAddStream(stream.reactTag, this._peerConnectionId);
+      const index = this._localStreams.indexOf(stream);
+      if (index !== -1) {
+          return;
+      }
+      WebRTCModule.peerConnectionAddStream(stream._reactTag, this._peerConnectionId);
+      this._localStreams.push(stream);
   }
 
   removeStream(stream: MediaStream) {
-    WebRTCModule.peerConnectionRemoveStream(stream.reactTag, this._peerConnectionId);
+      const index = this._localStreams.indexOf(stream);
+      if (index === -1) {
+          return;
+      }
+      this._localStreams.splice(index, 1);
+      WebRTCModule.peerConnectionRemoveStream(stream._reactTag, this._peerConnectionId);
   }
 
-  createOffer(success: ?Function, failure: ?Function, constraints) {
-    WebRTCModule.peerConnectionCreateOffer(this._peerConnectionId, (successful, data) => {
-      if (successful) {
-        const sessionDescription = new RTCSessionDescription(data);
-        success(sessionDescription);
-      } else {
-        failure(data); // TODO: convert to NavigatorUserMediaError
-      }
+  createOffer(options) {
+    return new Promise((resolve, reject) => {
+      WebRTCModule.peerConnectionCreateOffer(
+        this._peerConnectionId,
+        RTCUtil.normalizeOfferAnswerOptions(options),
+        (successful, data) => {
+          if (successful) {
+            resolve(new RTCSessionDescription(data));
+          } else {
+            reject(data); // TODO: convert to NavigatorUserMediaError
+          }
+        });
     });
   }
 
-  createAnswer(success: ?Function, failure: ?Function, constraints) {
-    WebRTCModule.peerConnectionCreateAnswer(this._peerConnectionId, (successful, data) => {
-      if (successful) {
-        const sessionDescription = new RTCSessionDescription(data);
-        success(sessionDescription);
-      } else {
-        failure(data);
-      }
+  createAnswer(options = {}) {
+    return new Promise((resolve, reject) => {
+      WebRTCModule.peerConnectionCreateAnswer(
+        this._peerConnectionId,
+        RTCUtil.normalizeOfferAnswerOptions(options),
+        (successful, data) => {
+          if (successful) {
+            resolve(new RTCSessionDescription(data));
+          } else {
+            reject(data);
+          }
+        });
     });
   }
 
@@ -123,63 +154,74 @@ export default class RTCPeerConnection extends EventTarget(PEER_CONNECTION_EVENT
     WebRTCModule.peerConnectionSetConfiguration(configuration, this._peerConnectionId);
   }
 
-  setLocalDescription(sessionDescription: RTCSessionDescription, success: ?Function, failure: ?Function, constraints) {
-    WebRTCModule.peerConnectionSetLocalDescription(sessionDescription.toJSON(), this._peerConnectionId, (successful, data) => {
-      if (successful) {
-        this.localDescription = sessionDescription;
-        success();
-      } else {
-        failure(data);
-      }
-    });
-  }
-
-  setRemoteDescription(sessionDescription: RTCSessionDescription, success: ?Function, failure: ?Function) {
-    WebRTCModule.peerConnectionSetRemoteDescription(sessionDescription.toJSON(), this._peerConnectionId, (successful, data) => {
-      if (successful) {
-        this.remoteDescription = sessionDescription;
-        success();
-      } else {
-        failure(data);
-      }
-    });
-  }
-
-  addIceCandidate(candidate, success, failure) { // TODO: success, failure
-    WebRTCModule.peerConnectionAddICECandidate(candidate.toJSON(), this._peerConnectionId, (successful) => {
-      if (successful) {
-        success && success();
-      } else {
-        failure && failure();
-      }
-    });
-  }
-
-  getStats(track, success, failure) {
-    if (WebRTCModule.peerConnectionGetStats) {
-      WebRTCModule.peerConnectionGetStats(
-        (track && track.id) || '',
+  setLocalDescription(sessionDescription: RTCSessionDescription) {
+    return new Promise((resolve, reject) => {
+      WebRTCModule.peerConnectionSetLocalDescription(
+        sessionDescription.toJSON ? sessionDescription.toJSON() : sessionDescription,
         this._peerConnectionId,
-        stats => {
-          if (success) {
-            // It turns out that on Android it is faster to construct a single
-            // JSON string representing the array of StatsReports and have it
-            // pass through the React Native bridge rather than the array of
-            // StatsReports.
-            if (typeof stats === 'string') {
-              try {
-                stats = JSON.parse(stats);
-              } catch (e) {
-                failure(e);
-                return;
-              }
-            }
-            success(stats);
+        (successful, data) => {
+          if (successful) {
+            this.localDescription = sessionDescription;
+            resolve();
+          } else {
+            reject(data);
           }
+      });
+    });
+  }
+
+  setRemoteDescription(sessionDescription: RTCSessionDescription) {
+    return new Promise((resolve, reject) => {
+      WebRTCModule.peerConnectionSetRemoteDescription(
+        sessionDescription.toJSON ? sessionDescription.toJSON() : sessionDescription,
+        this._peerConnectionId,
+        (successful, data) => {
+          if (successful) {
+            this.remoteDescription = sessionDescription;
+            resolve();
+          } else {
+            reject(data);
+          }
+      });
+    });
+  }
+
+  addIceCandidate(candidate) {
+    return new Promise((resolve, reject) => {
+      WebRTCModule.peerConnectionAddICECandidate(
+        candidate.toJSON ? candidate.toJSON() : candidate,
+        this._peerConnectionId,
+        (successful) => {
+          if (successful) {
+            resolve()
+          } else {
+            // XXX: This should be OperationError
+            reject(new Error('Failed to add ICE candidate'));
+          }
+      });
+    });
+  }
+
+  getStats() {
+    return WebRTCModule.peerConnectionGetStats(this._peerConnectionId)
+        .then( data =>  {
+           /* On both Android and iOS it is faster to construct a single
+            JSON string representing the Map of StatsReports and have it
+            pass through the React Native bridge rather than the Map of
+            StatsReports. While the implementations do try to be faster in
+            general, the stress is on being faster to pass through the React
+            Native bridge which is a bottleneck that tends to be visible in
+            the UI when there is congestion involving UI-related passing.
+
+            TODO Implement the logic for filtering the stats based on 
+            the sender/receiver
+            */
+            return new Map(JSON.parse(data));
         });
-    } else {
-      console.warn('RTCPeerConnection getStats not supported');
-    }
+  }
+
+  getLocalStreams() {
+    return this._localStreams.slice();
   }
 
   getRemoteStreams() {
@@ -190,6 +232,15 @@ export default class RTCPeerConnection extends EventTarget(PEER_CONNECTION_EVENT
     WebRTCModule.peerConnectionClose(this._peerConnectionId);
   }
 
+  _getTrack(streamReactTag, trackId): MediaStreamTrack {
+    let stream = this._remoteStreams.find(stream => stream._reactTag === streamReactTag);
+    if (!stream) {
+      this._localStreams.find(stream => stream._reactTag === streamReactTag);
+    }
+
+    return stream && stream._tracks.find(track => track.id === trackId);
+  }
+
   _unregisterEvents(): void {
     this._subscriptions.forEach(e => e.remove());
     this._subscriptions = [];
@@ -197,13 +248,13 @@ export default class RTCPeerConnection extends EventTarget(PEER_CONNECTION_EVENT
 
   _registerEvents(): void {
     this._subscriptions = [
-      DeviceEventEmitter.addListener('peerConnectionOnRenegotiationNeeded', ev => {
+      EventEmitter.addListener('peerConnectionOnRenegotiationNeeded', ev => {
         if (ev.id !== this._peerConnectionId) {
           return;
         }
         this.dispatchEvent(new RTCEvent('negotiationneeded'));
       }),
-      DeviceEventEmitter.addListener('peerConnectionIceConnectionChanged', ev => {
+      EventEmitter.addListener('peerConnectionIceConnectionChanged', ev => {
         if (ev.id !== this._peerConnectionId) {
           return;
         }
@@ -214,38 +265,57 @@ export default class RTCPeerConnection extends EventTarget(PEER_CONNECTION_EVENT
           this._unregisterEvents();
         }
       }),
-      DeviceEventEmitter.addListener('peerConnectionSignalingStateChanged', ev => {
+      EventEmitter.addListener('peerConnectionStateChanged', ev => {
+        if (ev.id !== this._peerConnectionId) {
+          return;
+        }
+        this.connectionState = ev.connectionState;
+        this.dispatchEvent(new RTCEvent('connectionstatechange'));
+        if (ev.connectionState === 'closed') {
+          // This PeerConnection is done, clean up event handlers.
+          this._unregisterEvents();
+        }
+      }),
+      EventEmitter.addListener('peerConnectionSignalingStateChanged', ev => {
         if (ev.id !== this._peerConnectionId) {
           return;
         }
         this.signalingState = ev.signalingState;
         this.dispatchEvent(new RTCEvent('signalingstatechange'));
       }),
-      DeviceEventEmitter.addListener('peerConnectionAddedStream', ev => {
+      EventEmitter.addListener('peerConnectionAddedStream', ev => {
         if (ev.id !== this._peerConnectionId) {
           return;
         }
-        const stream = new MediaStream(ev.streamId, ev.streamReactTag);
-        const tracks = ev.tracks;
-        for (let i = 0; i < tracks.length; i++) {
-          stream.addTrack(new MediaStreamTrack(tracks[i]));
-        }
+        const stream = new MediaStream(ev);
         this._remoteStreams.push(stream);
         this.dispatchEvent(new MediaStreamEvent('addstream', {stream}));
       }),
-      DeviceEventEmitter.addListener('peerConnectionRemovedStream', ev => {
+      EventEmitter.addListener('peerConnectionRemovedStream', ev => {
         if (ev.id !== this._peerConnectionId) {
           return;
         }
-        const stream = this._remoteStreams.find(s => s.reactTag === ev.streamId);
+        const stream = this._remoteStreams.find(s => s._reactTag === ev.streamId);
         if (stream) {
           const index = this._remoteStreams.indexOf(stream);
-          if (index > -1) {
+          if (index !== -1) {
             this._remoteStreams.splice(index, 1);
           }
         }
         this.dispatchEvent(new MediaStreamEvent('removestream', {stream}));
       }),
+      EventEmitter.addListener('mediaStreamTrackMuteChanged', ev => {
+        if (ev.peerConnectionId !== this._peerConnectionId) {
+          return;
+        }
+        const track = this._getTrack(ev.streamReactTag, ev.trackId);
+        if (track) {
+          track.muted = ev.muted;
+          const eventName = ev.muted ? 'mute' : 'unmute';
+          track.dispatchEvent(new MediaStreamTrackEvent(eventName, {track}));
+        }
+      }),
+      EventEmitter.addListener('peerConnectionGotICECandidate', ev => {
       DeviceEventEmitter.addListener('peerConnectionGotICECandidate', ev => {
         if (ev.id !== this._peerConnectionId) {
           return;
@@ -254,7 +324,7 @@ export default class RTCPeerConnection extends EventTarget(PEER_CONNECTION_EVENT
         const event = new RTCIceCandidateEvent('icecandidate', {candidate});
         this.dispatchEvent(event);
       }),
-      DeviceEventEmitter.addListener('peerConnectionIceGatheringChanged', ev => {
+      EventEmitter.addListener('peerConnectionIceGatheringChanged', ev => {
         if (ev.id !== this._peerConnectionId) {
           return;
         }
@@ -266,7 +336,7 @@ export default class RTCPeerConnection extends EventTarget(PEER_CONNECTION_EVENT
 
         this.dispatchEvent(new RTCEvent('icegatheringstatechange'));
       }),
-      DeviceEventEmitter.addListener('peerConnectionDidOpenDataChannel', ev => {
+      EventEmitter.addListener('peerConnectionDidOpenDataChannel', ev => {
         if (ev.id !== this._peerConnectionId) {
           return;
         }
@@ -291,7 +361,27 @@ export default class RTCPeerConnection extends EventTarget(PEER_CONNECTION_EVENT
         // checking for ResourceInUse.
         this._dataChannelIds.add(id);
         this.dispatchEvent(new RTCDataChannelEvent('datachannel', {channel}));
-      })
+      }),
+      DeviceEventEmitter.addListener('mediaStreamTrackMuteChanged', ev => {
+        if (ev.peerConnectionId !== this._peerConnectionId) {
+          return;
+        }
+        const track = this._getTrack(ev.streamReactTag, ev.trackId);
+        if (track) {
+          track.muted = ev.muted;
+          const eventName = ev.muted ? 'mute' : 'unmute';
+          track.dispatchEvent(new MediaStreamTrackEvent(eventName, {track}));
+        }
+      }),
+      DeviceEventEmitter.addListener('mediaStreamTrackUpdateSettings', ev => {
+        if (ev.peerConnectionId !== this._peerConnectionId) {
+          return;
+        }
+        const track = this._getTrack(ev.streamReactTag, ev.trackId);
+        if (track) {
+          track._settings = Object.assign({}, track._settings, ev.settings);
+        }
+      }),
     ];
   }
 
@@ -327,7 +417,7 @@ export default class RTCPeerConnection extends EventTarget(PEER_CONNECTION_EVENT
       // is reserved due to SCTP INIT and INIT-ACK chunks only allowing a
       // maximum of 65535 streams to be negotiated (as defined by the WebRTC
       // Data Channel Establishment Protocol).
-      for (id = 0; id < 65535 && dataChannelIds.has(id); ++id);
+      for (id = 1; id < 65535 && dataChannelIds.has(id); ++id);
       // TODO Throw an error if no unused id is available.
       dataChannelDict = Object.assign({id}, dataChannelDict);
     }

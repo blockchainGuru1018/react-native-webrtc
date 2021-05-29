@@ -1,11 +1,10 @@
 'use strict';
 
 import {
-  DeviceEventEmitter,
   NativeModules,
   requireNativeComponent,
 } from 'react-native';
-import {PropTypes} from 'react';
+import PropTypes from 'prop-types';
 
 const {WebRTCModule} = NativeModules;
 
@@ -65,6 +64,7 @@ const View = requireNativeComponent('RTCVideoView', RTCView, {nativeOnly: {
   accessibilityLiveRegion: true,
   importantForAccessibility: true,
   onLayout: true,
+  nativeID: true,
 }});
 
 export default View;

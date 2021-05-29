@@ -14,6 +14,7 @@
     int _fps;
 }
 
+@dynamic frameRate;
 @dynamic facingMode;
 
 -(instancetype)initWithCapturer:(RTCCameraVideoCapturer *)capturer
@@ -81,6 +82,8 @@
         return;
     }
 
+    _selectedFormat = format;
+
     RCTLog(@"[VideoCaptureController] Capture will start");
 
     // Starting the capture happens on another thread. Wait for it.
@@ -121,6 +124,10 @@
     _deviceId = NULL;
 
     [self startCapture];
+}
+
+-(int)frameRate {
+    return _fps;
 }
 
 #pragma mark Private

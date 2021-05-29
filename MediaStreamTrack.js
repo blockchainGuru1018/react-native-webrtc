@@ -21,6 +21,8 @@ type MediaStreamTrackState = "live" | "ended";
 class MediaStreamTrack extends EventTarget(MEDIA_STREAM_TRACK_EVENTS) {
   _constraints: Object;
   _enabled: boolean;
+  _settings: Object;
+
   _remote: boolean;
   _settings: Object;
   id: string;

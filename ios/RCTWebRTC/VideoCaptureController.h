@@ -6,6 +6,8 @@
 
 @interface VideoCaptureController : CaptureController
 
+@property (nonatomic, readonly, copy) AVCaptureDeviceFormat *selectedFormat;
+@property (nonatomic, readonly) int frameRate;
 @property(nonatomic, readonly) int height;
 @property(nonatomic, readonly) int width;
 @property(nonatomic, readonly) int fps;

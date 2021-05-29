@@ -11,6 +11,10 @@
 #import <React/RCTEventDispatcher.h>
 #import <React/RCTLog.h>
 #import <React/RCTUtils.h>
+#import "RCTLog.h"
+#import "RCTUtils.h"
+#import "RCTBridge.h"
+#import "RCTEventDispatcher.h"
 
 #import <WebRTC/RTCConfiguration.h>
 #import <WebRTC/RTCIceCandidate.h>

@@ -233,9 +233,10 @@ export default class RTCPeerConnection extends EventTarget(PEER_CONNECTION_EVENT
   }
 
   _getTrack(streamReactTag, trackId): MediaStreamTrack {
-    const stream
-      = this._remoteStreams.find(
-          stream => stream._reactTag === streamReactTag);
+    let stream = this._remoteStreams.find(stream => stream._reactTag === streamReactTag);
+    if (!stream) {
+      this._localStreams.find(stream => stream._reactTag === streamReactTag);
+    }
 
     return stream && stream._tracks.find(track => track.id === trackId);
   }
@@ -315,6 +316,7 @@ export default class RTCPeerConnection extends EventTarget(PEER_CONNECTION_EVENT
         }
       }),
       EventEmitter.addListener('peerConnectionGotICECandidate', ev => {
+      DeviceEventEmitter.addListener('peerConnectionGotICECandidate', ev => {
         if (ev.id !== this._peerConnectionId) {
           return;
         }
@@ -359,7 +361,27 @@ export default class RTCPeerConnection extends EventTarget(PEER_CONNECTION_EVENT
         // checking for ResourceInUse.
         this._dataChannelIds.add(id);
         this.dispatchEvent(new RTCDataChannelEvent('datachannel', {channel}));
-      })
+      }),
+      DeviceEventEmitter.addListener('mediaStreamTrackMuteChanged', ev => {
+        if (ev.peerConnectionId !== this._peerConnectionId) {
+          return;
+        }
+        const track = this._getTrack(ev.streamReactTag, ev.trackId);
+        if (track) {
+          track.muted = ev.muted;
+          const eventName = ev.muted ? 'mute' : 'unmute';
+          track.dispatchEvent(new MediaStreamTrackEvent(eventName, {track}));
+        }
+      }),
+      DeviceEventEmitter.addListener('mediaStreamTrackUpdateSettings', ev => {
+        if (ev.peerConnectionId !== this._peerConnectionId) {
+          return;
+        }
+        const track = this._getTrack(ev.streamReactTag, ev.trackId);
+        if (track) {
+          track._settings = Object.assign({}, track._settings, ev.settings);
+        }
+      }),
     ];
   }
 

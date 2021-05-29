@@ -1,101 +1,98 @@
 'use strict';
 
-import {NativeModules} from 'react-native';
+import {Platform, NativeModules} from 'react-native';
+import * as RTCUtil from './RTCUtil';
 
 import MediaStream from './MediaStream';
 import MediaStreamError from './MediaStreamError';
-import MediaStreamTrack from './MediaStreamTrack';
+import permissions from './Permissions';
 
-const {WebRTCModule} = NativeModules;
+const { WebRTCModule } = NativeModules;
 
-export default function getUserMedia(
-    constraints,
-    successCallback,
-    errorCallback) {
-  if (typeof successCallback !== 'function') {
-    throw new TypeError('successCallback is non-nullable and required');
-  }
-  if (typeof errorCallback !== 'function') {
-    throw new TypeError('errorCallback is non-nullable and required');
-  }
+
+export default function getUserMedia(constraints = {}) {
   // According to
   // https://www.w3.org/TR/mediacapture-streams/#dom-mediadevices-getusermedia,
   // the constraints argument is a dictionary of type MediaStreamConstraints.
-  if (typeof constraints === 'object') {
-    // According to step 2 of the getUserMedia() algorithm, requestedMediaTypes
-    // is the set of media types in constraints with either a dictionary value
-    // or a value of "true".
-    let requestedMediaTypes = 0;
-    for (const mediaType of [ 'audio', 'video' ]) {
-      // According to the spec, the types of the audio and video members of
-      // MediaStreamConstraints are either boolean or MediaTrackConstraints
-      // (i.e. dictionary).
-      const mediaTypeConstraints = constraints[mediaType];
-      const typeofMediaTypeConstraints = typeof mediaTypeConstraints;
-      if (typeofMediaTypeConstraints !== 'undefined') {
-        if (typeofMediaTypeConstraints === 'boolean') {
-          mediaTypeConstraints && ++requestedMediaTypes;
-        } else if (typeofMediaTypeConstraints == 'object') {
-          ++requestedMediaTypes;
-        } else {
-          errorCallback(
-            new TypeError(
-              'constraints.' + mediaType
-                + ' is neither a boolean nor a dictionary'));
-          return;
-        }
-      }
-    }
-    // According to step 3 of the getUserMedia() algorithm, if
-    // requestedMediaTypes is the empty set, the method invocation fails with
-    // a TypeError.
-    if (requestedMediaTypes === 0) {
-      errorCallback(new TypeError('constraints requests no media types'));
-      return;
-    }
-  } else {
-    errorCallback(new TypeError('constraints is not a dictionary'));
-    return;
+  if (typeof constraints !== 'object') {
+    return Promise.reject(new TypeError('constraints is not a dictionary'));
   }
 
-  WebRTCModule.getUserMedia(
-    constraints,
-    /* successCallback */ (id, tracks) => {
-      const stream = new MediaStream(id);
-      for (const track of tracks) {
-        stream.addTrack(new MediaStreamTrack(track));
+  if ((typeof constraints.audio === 'undefined' || !constraints.audio)
+      && (typeof constraints.video === 'undefined' || !constraints.video)) {
+    return Promise.reject(new TypeError('audio and/or video is required'));
+  }
+
+  // Normalize constraints.
+  constraints = RTCUtil.normalizeConstraints(constraints);
+
+  // Request required permissions
+  const reqPermissions = [];
+  if (constraints.audio) {
+    reqPermissions.push(permissions.request({ name: 'microphone' }));
+  } else {
+    reqPermissions.push(Promise.resolve(false));
+  }
+  if (constraints.video) {
+    reqPermissions.push(permissions.request({ name: 'camera' }));
+  } else {
+    reqPermissions.push(Promise.resolve(false));
+  }
+
+  return new Promise((resolve, reject) => {
+    Promise.all(reqPermissions).then(results => {
+      const [ audioPerm, videoPerm ] = results;
+
+      // Check permission results and remove unneeded permissions.
+
+      if (!audioPerm && !videoPerm) {
+        // https://www.w3.org/TR/mediacapture-streams/#dom-mediadevices-getusermedia
+        // step 4
+        const error = {
+          message: 'Permission denied.',
+          name: 'SecurityError'
+        };
+        reject(new MediaStreamError(error));
+
+        return;
       }
 
-      successCallback(stream);
-    },
-    /* errorCallback */ (type, message) => {
-      let error;
-      switch (type) {
-      case 'DOMException':
-        // According to
-        // https://www.w3.org/TR/mediacapture-streams/#idl-def-MediaStreamError,
-        // MediaStreamError is either a DOMException object or an
-        // OverconstrainedError object. We are very likely to not have a
-        // definition of DOMException on React Native (unless the client has
-        // provided such a definition). If necessary, we will fall back to our
-        // definition of MediaStreamError.
-        if (typeof DOMException === 'function') {
-          error = new DOMException(/* message */ undefined, /* name */ message);
-        }
-        break;
-      case 'OverconstrainedError':
-        if (typeof OverconstrainedError === 'function') {
-          error = new OverconstrainedError(/* constraint */ undefined, message);
-        }
-        break;
-      case 'TypeError':
-        error = new TypeError(message);
-        break;
-      }
-      if (!error) {
-        error = new MediaStreamError({ message, name: type });
-      }
+      audioPerm || (delete constraints.audio);
+      videoPerm || (delete constraints.video);
 
-      errorCallback(error);
+      const success = (id, tracks) => {
+          // Store initial constraints.
+          for (const trackInfo of tracks) {
+            const c = constraints[trackInfo.kind];
+            if (typeof c === 'object') {
+              trackInfo.constraints = RTCUtil.deepClone(c);
+            }
+          }
+
+          const info = {
+            streamId: id,
+            streamReactTag: id,
+            tracks
+          };
+    
+          resolve(new MediaStream(info));
+      };
+
+      const failure = (type, message) => {
+          let error;
+          switch (type) {
+          case 'TypeError':
+            error = new TypeError(message);
+            break;
+          }
+          if (!error) {
+            error = new MediaStreamError({ message, name: type });
+          }
+
+          reject(error);
+      };
+
+      WebRTCModule.getUserMedia(constraints, success, failure);
     });
+  });
 }

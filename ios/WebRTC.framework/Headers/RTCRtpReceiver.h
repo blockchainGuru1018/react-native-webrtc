@@ -10,13 +10,42 @@
 
 #import <Foundation/Foundation.h>
 
-#import <WebRTC/RTCMacros.h>
-#import <WebRTC/RTCMediaStreamTrack.h>
-#import <WebRTC/RTCRtpParameters.h>
+#import "RTCMacros.h"
+#import "RTCMediaStreamTrack.h"
+#import "RTCRtpParameters.h"
 
 NS_ASSUME_NONNULL_BEGIN
 
-RTC_EXPORT
+/** Represents the media type of the RtpReceiver. */
+typedef NS_ENUM(NSInteger, RTCRtpMediaType) {
+  RTCRtpMediaTypeAudio,
+  RTCRtpMediaTypeVideo,
+  RTCRtpMediaTypeData,
+};
+
+@class RTCRtpReceiver;
+
+RTC_OBJC_EXPORT
+@protocol RTCRtpReceiverDelegate <NSObject>
+
+/** Called when the first RTP packet is received.
+ *
+ *  Note: Currently if there are multiple RtpReceivers of the same media type,
+ *  they will all call OnFirstPacketReceived at once.
+ *
+ *  For example, if we create three audio receivers, A/B/C, they will listen to
+ *  the same signal from the underneath network layer. Whenever the first audio packet
+ *  is received, the underneath signal will be fired. All the receivers A/B/C will be
+ *  notified and the callback of the receiver's delegate will be called.
+ *
+ *  The process is the same for video receivers.
+ */
+- (void)rtpReceiver:(RTCRtpReceiver *)rtpReceiver
+    didReceiveFirstPacketForMediaType:(RTCRtpMediaType)mediaType;
+
+@end
+
+RTC_OBJC_EXPORT
 @protocol RTCRtpReceiver <NSObject>
 
 /** A unique identifier for this receiver. */
@@ -36,11 +65,14 @@ RTC_EXPORT
  *  RTCMediaStreamTrack. Use isEqual: instead of == to compare
  *  RTCMediaStreamTrack instances.
  */
-@property(nonatomic, readonly) RTCMediaStreamTrack *track;
+@property(nonatomic, readonly, nullable) RTCMediaStreamTrack *track;
+
+/** The delegate for this RtpReceiver. */
+@property(nonatomic, weak) id<RTCRtpReceiverDelegate> delegate;
 
 @end
 
-RTC_EXPORT
+RTC_OBJC_EXPORT
 @interface RTCRtpReceiver : NSObject <RTCRtpReceiver>
 
 - (instancetype)init NS_UNAVAILABLE;

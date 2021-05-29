@@ -10,11 +10,11 @@
 
 #import <Foundation/Foundation.h>
 
-#import <WebRTC/RTCMacros.h>
+#import "RTCMacros.h"
 
 NS_ASSUME_NONNULL_BEGIN
 
-RTC_EXPORT
+RTC_OBJC_EXPORT
 @interface RTCIceCandidate : NSObject
 
 /**
@@ -32,6 +32,9 @@ RTC_EXPORT
 /** The SDP string for this candidate. */
 @property(nonatomic, readonly) NSString *sdp;
 
+/** The URL of the ICE server which this candidate is gathered from. */
+@property(nonatomic, readonly, nullable) NSString *serverUrl;
+
 - (instancetype)init NS_UNAVAILABLE;
 
 /**
@@ -39,8 +42,7 @@ RTC_EXPORT
  */
 - (instancetype)initWithSdp:(NSString *)sdp
               sdpMLineIndex:(int)sdpMLineIndex
-                     sdpMid:(nullable NSString *)sdpMid
-    NS_DESIGNATED_INITIALIZER;
+                     sdpMid:(nullable NSString *)sdpMid NS_DESIGNATED_INITIALIZER;
 
 @end
 

@@ -15,6 +15,7 @@
 }
 
 @dynamic frameRate;
+@dynamic facingMode;
 
 -(instancetype)initWithCapturer:(RTCCameraVideoCapturer *)capturer
                  andConstraints:(NSDictionary *)constraints {
@@ -163,6 +164,12 @@
     }
 
     return selectedFormat;
+}
+
+#pragma mark Properties
+
+- (NSString *)facingMode {
+    return _usingFrontCamera ? @"user" : @"environment";
 }
 
 @end

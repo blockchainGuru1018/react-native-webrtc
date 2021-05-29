@@ -11,6 +11,8 @@
 #import <React/RCTBridgeModule.h>
 #import <React/RCTConvert.h>
 #import <React/RCTEventEmitter.h>
+#import "RCTBridgeModule.h"
+#import "RCTConvert.h"
 
 #import <WebRTC/RTCMediaStream.h>
 #import <WebRTC/RTCPeerConnectionFactory.h>

@@ -100,13 +100,35 @@ class GetUserMediaImpl {
 
         String id = UUID.randomUUID().toString();
         PeerConnectionFactory pcFactory = webRTCModule.mFactory;
-        AudioSource audioSource = pcFactory.createAudioSource(webRTCModule.constraintsForOptions(audioConstraintsMap));
+        MediaConstraints peerConstraints = webRTCModule.constraintsForOptions(audioConstraintsMap);
+
+        //PeerConnectionFactory.createAudioSource will throw an error when mandatory constraints contain nulls.
+        //so, let's check for nulls
+        checkMandatoryConstraints(peerConstraints);
+
+        AudioSource audioSource = pcFactory.createAudioSource(peerConstraints);
         AudioTrack track = pcFactory.createAudioTrack(id, audioSource);
         tracks.put(
             id,
             new TrackPrivate(track, audioSource, /* videoCapturer */ null));
 
         return track;
+    }
+
+    private void checkMandatoryConstraints(MediaConstraints peerConstraints) {
+        ArrayList<MediaConstraints.KeyValuePair> valid = new ArrayList<>(peerConstraints.mandatory.size());
+
+        for (MediaConstraints.KeyValuePair constraint : peerConstraints.mandatory) {
+            if (constraint.getValue() != null) {
+                valid.add(constraint);
+            } else {
+                Log.d(TAG, String.format("constraint %s is null, ignoring it",
+                        constraint.getKey()));
+            }
+        }
+
+        peerConstraints.mandatory.clear();
+        peerConstraints.mandatory.addAll(valid);
     }
 
     ReadableArray enumerateDevices() {
@@ -263,18 +285,26 @@ class GetUserMediaImpl {
     private void createScreenStream() {
         VideoTrack track = createScreenTrack();
 
-        createStream(new MediaStreamTrack[]{track}, (streamId, tracksInfo) -> {
-            WritableMap data = Arguments.createMap();
+        if (track == null) {
+            displayMediaPromise.reject(new RuntimeException("ScreenTrack is null."));
+        } else {
+            createStream(new MediaStreamTrack[]{track}, (streamId, tracksInfo) -> {
+                WritableMap data = Arguments.createMap();
 
-            data.putString("streamId", streamId);
-            data.putMap("track", tracksInfo.get(0));
+                data.putString("streamId", streamId);
 
-            displayMediaPromise.resolve(data);
+                if (tracksInfo.size() == 0) {
+                    displayMediaPromise.reject(new RuntimeException("No ScreenTrackInfo found."));
+                } else {
+                    data.putMap("track", tracksInfo.get(0));
+                    displayMediaPromise.resolve(data);
+                }
+            });
+        }
 
-            // Cleanup
-            mediaProjectionPermissionResultData = null;
-            displayMediaPromise = null;
-        });
+        // Cleanup
+        mediaProjectionPermissionResultData = null;
+        displayMediaPromise = null;
     }
 
     private void createStream(MediaStreamTrack[] tracks, BiConsumer<String, ArrayList<WritableMap>> successCallback) {
@@ -318,9 +348,7 @@ class GetUserMediaImpl {
         int height = displayMetrics.heightPixels;
         int fps = 30;
         ScreenCaptureController screenCaptureController = new ScreenCaptureController(width, height, fps, mediaProjectionPermissionResultData);
-        VideoTrack track = createVideoTrack(screenCaptureController);
-
-        return track;
+        return createVideoTrack(screenCaptureController);
     }
 
     private VideoTrack createVideoTrack(AbstractVideoCaptureController videoCaptureController) {

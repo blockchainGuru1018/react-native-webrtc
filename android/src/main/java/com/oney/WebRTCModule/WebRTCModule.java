@@ -1,6 +1,7 @@
 package com.oney.WebRTCModule;
 
 import androidx.annotation.Nullable;
+
 import android.util.Log;
 import android.util.SparseArray;
 
@@ -41,6 +42,8 @@ public class WebRTCModule extends ReactContextBaseJavaModule {
         private VideoEncoderFactory videoEncoderFactory = null;
         private VideoDecoderFactory videoDecoderFactory = null;
         private AudioDeviceModule audioDeviceModule = null;
+        private Loggable injectableLogger = null;
+        private Logging.Severity loggingSeverity = null;
 
         public Options() {}
 
@@ -54,6 +57,14 @@ public class WebRTCModule extends ReactContextBaseJavaModule {
 
         public void setVideoEncoderFactory(VideoEncoderFactory videoEncoderFactory) {
             this.videoEncoderFactory = videoEncoderFactory;
+        }
+
+        public void setInjectableLogger(Loggable logger) {
+            this.injectableLogger = logger;
+        }
+
+        public void setLoggingSeverity(Logging.Severity severity) {
+            this.loggingSeverity = severity;
         }
     }
 
@@ -76,19 +87,24 @@ public class WebRTCModule extends ReactContextBaseJavaModule {
     private void initAsync(Options options) {
         ReactApplicationContext reactContext = getReactApplicationContext();
 
-        PeerConnectionFactory.initialize(
-            PeerConnectionFactory.InitializationOptions.builder(reactContext)
-                .createInitializationOptions());
-
         AudioDeviceModule adm = null;
         VideoEncoderFactory encoderFactory = null;
         VideoDecoderFactory decoderFactory = null;
+        Loggable injectableLogger = null;
+        Logging.Severity loggingSeverity = null;
 
         if (options != null) {
             adm = options.audioDeviceModule;
             encoderFactory = options.videoEncoderFactory;
             decoderFactory = options.videoDecoderFactory;
+            injectableLogger = options.injectableLogger;
+            loggingSeverity = options.loggingSeverity;
         }
+
+        PeerConnectionFactory.initialize(
+            PeerConnectionFactory.InitializationOptions.builder(reactContext)
+                .setInjectableLogger(injectableLogger, loggingSeverity)
+                .createInitializationOptions());
 
         if (encoderFactory == null || decoderFactory == null) {
             // Initialize EGL context required for HW acceleration.
@@ -188,7 +204,7 @@ public class WebRTCModule extends ReactContextBaseJavaModule {
 
     private PeerConnection.RTCConfiguration parseRTCConfiguration(ReadableMap map) {
         ReadableArray iceServersArray = null;
-        if (map != null) {
+        if (map != null && map.hasKey("iceServers")) {
             iceServersArray = map.getArray("iceServers");
         }
         List<PeerConnection.IceServer> iceServers = createIceServers(iceServersArray);
@@ -198,8 +214,7 @@ public class WebRTCModule extends ReactContextBaseJavaModule {
         }
 
         // iceTransportPolicy (public api)
-        if (map.hasKey("iceTransportPolicy")
-                && map.getType("iceTransportPolicy") == ReadableType.String) {
+        if (map.hasKey("iceTransportPolicy") && map.getType("iceTransportPolicy") == ReadableType.String) {
             final String v = map.getString("iceTransportPolicy");
             if (v != null) {
                 switch (v) {
@@ -868,20 +883,19 @@ public class WebRTCModule extends ReactContextBaseJavaModule {
     }
 
     @ReactMethod
-    public void peerConnectionGetStats(String trackId, int id, Callback cb) {
+    public void peerConnectionGetStats(int peerConnectionId, Promise promise) {
         ThreadUtils.runOnExecutor(() ->
-            peerConnectionGetStatsAsync(trackId, id, cb));
+            peerConnectionGetStatsAsync(peerConnectionId, promise));
     }
 
-    private void peerConnectionGetStatsAsync(String trackId,
-                                             int id,
-                                             Callback cb) {
-        PeerConnectionObserver pco = mPeerConnectionObservers.get(id);
+    private void peerConnectionGetStatsAsync(int peerConnectionId,
+                                             Promise promise) {
+        PeerConnectionObserver pco = mPeerConnectionObservers.get(peerConnectionId);
         if (pco == null || pco.getPeerConnection() == null) {
             Log.d(TAG, "peerConnectionGetStats() peerConnection is null");
-            cb.invoke(false, "PeerConnection ID not found");
+            promise.reject(new Exception("PeerConnection ID not found"));
         } else {
-            pco.getStats(trackId, cb);
+            pco.getStats(promise);
         }
     }
 

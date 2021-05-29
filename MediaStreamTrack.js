@@ -47,6 +47,7 @@ class MediaStreamTrack extends EventTarget(MEDIA_STREAM_TRACK_EVENTS) {
     this.kind = info.kind;
     this.label = info.label;
     this.muted = false;
+    this.remote = info.remote;
 
     const _readyState = info.readyState.toLowerCase();
     this.readyState = (_readyState === "initializing"

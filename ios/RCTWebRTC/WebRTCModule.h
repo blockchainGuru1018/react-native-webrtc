@@ -8,6 +8,9 @@
 #import <Foundation/Foundation.h>
 #import <AVFoundation/AVFoundation.h>
 
+#import <React/RCTBridgeModule.h>
+#import <React/RCTConvert.h>
+#import <React/RCTEventEmitter.h>
 #import "RCTBridgeModule.h"
 #import "RCTConvert.h"
 
@@ -19,7 +22,20 @@
 #import <WebRTC/RTCVideoDecoderFactory.h>
 #import <WebRTC/RTCVideoEncoderFactory.h>
 
-@interface WebRTCModule : NSObject <RCTBridgeModule>
+static NSString *const kEventPeerConnectionSignalingStateChanged = @"peerConnectionSignalingStateChanged";
+static NSString *const kEventPeerConnectionStateChanged = @"peerConnectionStateChanged";
+static NSString *const kEventPeerConnectionAddedStream = @"peerConnectionAddedStream";
+static NSString *const kEventPeerConnectionRemovedStream = @"peerConnectionRemovedStream";
+static NSString *const kEventPeerConnectionOnRenegotiationNeeded = @"peerConnectionOnRenegotiationNeeded";
+static NSString *const kEventPeerConnectionIceConnectionChanged = @"peerConnectionIceConnectionChanged";
+static NSString *const kEventPeerConnectionIceGatheringChanged = @"peerConnectionIceGatheringChanged";
+static NSString *const kEventPeerConnectionGotICECandidate = @"peerConnectionGotICECandidate";
+static NSString *const kEventPeerConnectionDidOpenDataChannel = @"peerConnectionDidOpenDataChannel";
+static NSString *const kEventDataChannelStateChanged = @"dataChannelStateChanged";
+static NSString *const kEventDataChannelReceiveMessage = @"dataChannelReceiveMessage";
+static NSString *const kEventMediaStreamTrackMuteChanged = @"mediaStreamTrackMuteChanged";
+
+@interface WebRTCModule : RCTEventEmitter <RCTBridgeModule>
 
 @property(nonatomic, strong) dispatch_queue_t workerQueue;
 

@@ -2,7 +2,9 @@
 #import <Foundation/Foundation.h>
 #import <WebRTC/RTCCameraVideoCapturer.h>
 
-@interface VideoCaptureController : NSObject
+#import "CaptureController.h"
+
+@interface VideoCaptureController : CaptureController
 
 @property(nonatomic, readonly) int height;
 @property(nonatomic, readonly) int width;

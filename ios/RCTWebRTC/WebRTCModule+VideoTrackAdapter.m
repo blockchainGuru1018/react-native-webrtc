@@ -74,6 +74,19 @@ static const NSTimeInterval MUTE_DELAY = 1.5;
     }
 }
 
+- (void)emitMuteEvent:(BOOL)muted {
+    [self.module sendEventWithName:kEventMediaStreamTrackMuteChanged
+                              body:@{
+                                @"peerConnectionId": self.peerConnectionId,
+                                @"streamReactTag": self.streamReactTag,
+                                @"trackId": self.trackId,
+                                @"muted": @(muted)
+                              }];
+    RCTLog(@"[VideoTrackAdapter] %@ event for %@ %@ %@",
+          muted ? @"Mute" : @"Unmute",
+          self.peerConnectionId,
+          self.streamReactTag,
+          self.trackId);
 - (void)emitEventWithName:(NSString *)name body:(id)body {
     [self.module.bridge.eventDispatcher sendDeviceEventWithName:name body:body];
     RCTLog(@"[VideoTrackAdapter] %@ event with body %@", name, body);
